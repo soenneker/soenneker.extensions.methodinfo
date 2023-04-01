@@ -2,6 +2,9 @@
 
 namespace Soenneker.Extensions.MethodInfo;
 
+/// <summary>
+/// A collection of useful MethodInfo methods
+/// </summary>
 public static class MethodInfoExtension
 {
     /// <summary>
