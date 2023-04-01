@@ -5,37 +5,40 @@ namespace Soenneker.Extensions.MethodInfo;
 public static class MethodInfoExtension
 {
     /// <summary>
-    /// Decently heavy, use in logging situations etc..
+    /// Decently heavy, use in logging situations etc.. TODO: StringBuilder?
     /// </summary>
-    public static string GetSignature(this System.Reflection.MethodInfo? mi)
+    public static string GetSignature(this System.Reflection.MethodInfo? methodInfo)
     {
-        if (mi == null)
+        if (methodInfo == null)
             return "";
 
         var result = "";
 
-        if (mi.IsPrivate)
+        if (methodInfo.IsPrivate)
             result += "private";
-        else if (mi.IsPublic)
+        else if (methodInfo.IsPublic)
             result += "public ";
-        if (mi.IsAbstract)
+
+        if (methodInfo.IsAbstract)
             result += "abstract ";
-        if (mi.IsStatic)
+
+        if (methodInfo.IsStatic)
             result += "static ";
-        if (mi.IsVirtual)
+
+        if (methodInfo.IsVirtual)
             result += "virtual ";
 
-        result += mi.ReturnType.Name + " ";
+        result += methodInfo.ReturnType.Name + " ";
 
-        result += mi.Name + "(";
+        result += methodInfo.Name + "(";
 
-        string[] param = mi.GetParameters()
+        string[] param = methodInfo.GetParameters()
             .Select(p => $"{p.ParameterType.Name} {p.Name}")
             .ToArray();
 
         result += string.Join(", ", param);
 
-        result += ")";
+        result += ')';
 
         return result;
     }
