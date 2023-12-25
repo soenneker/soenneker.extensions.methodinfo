@@ -8,5 +8,5 @@
 ## Installation
 
 ```
-Install-Package Soenneker.Extensions.MethodInfo
+dotnet add package Soenneker.Extensions.MethodInfo
 ```
