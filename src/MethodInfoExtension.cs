@@ -1,6 +1,6 @@
 ﻿using System;
+using System.Reflection;
 using System.Text;
-using ParameterInfo = System.Reflection.ParameterInfo;
 
 namespace Soenneker.Extensions.MethodInfo;
 
@@ -74,7 +74,7 @@ public static class MethodInfoExtension
     /// <returns>
     /// A <see cref="string"/> containing the original member name, with any accessor prefixes removed.
     /// </returns>
-    internal static string ToOriginalMemberName(this System.Reflection.MethodInfo methodInfo)
+    public static string ToOriginalMemberName(this System.Reflection.MethodInfo methodInfo)
     {
         string methodName = methodInfo.Name;
 
