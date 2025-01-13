@@ -23,9 +23,10 @@ public static class MethodInfoExtension
     public static string GetSignature(this System.Reflection.MethodInfo? methodInfo)
     {
         if (methodInfo == null)
-            return "";
+            return string.Empty;
 
-        var sb = new StringBuilder();
+        // Use StringBuilder with an estimated capacity to minimize resizing
+        var sb = new StringBuilder(128);
 
         // Append access modifier
         if (methodInfo.IsPrivate)
@@ -36,33 +37,31 @@ public static class MethodInfoExtension
         // Append method modifiers
         if (methodInfo.IsAbstract)
             sb.Append("abstract ");
+
         if (methodInfo.IsStatic)
             sb.Append("static ");
+
         if (methodInfo.IsVirtual && !methodInfo.IsAbstract)
             sb.Append("virtual ");
 
         // Append return type and method name
-        sb.Append(methodInfo.ReturnType.Name);
-        sb.Append(' ');
-        sb.Append(methodInfo.Name);
-        sb.Append('(');
+        sb.Append(methodInfo.ReturnType.Name).Append(' ').Append(methodInfo.Name).Append('(');
 
-        // Append parameters
+        // Append parameters (avoiding unnecessary allocations)
         ParameterInfo[] parameters = methodInfo.GetParameters();
 
-        for (int i = 0; i < parameters.Length; i++)
+        if (parameters.Length > 0)
         {
-            ParameterInfo param = parameters[i];
-            sb.Append(param.ParameterType.Name);
-            sb.Append(' ');
-            sb.Append(param.Name);
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                ParameterInfo param = parameters[i];
+                sb.Append(param.ParameterType.Name).Append(' ').Append(param.Name).Append(", ");
+            }
 
-            if (i < parameters.Length - 1)
-                sb.Append(", ");
+            sb.Length -= 2; // Remove the last ", "
         }
 
         sb.Append(')');
-
         return sb.ToString();
     }
 
@@ -76,20 +75,15 @@ public static class MethodInfoExtension
     /// </returns>
     public static string ToOriginalMemberName(this System.Reflection.MethodInfo methodInfo)
     {
-        string methodName = methodInfo.Name;
+        if (!methodInfo.IsSpecialName)
+            return methodInfo.Name;
 
-        // Check if it's a property getter or setter and remove "get_" or "set_"
-        if (methodInfo.IsSpecialName)
-        {
-            ReadOnlySpan<char> methodSpan = methodName.AsSpan();
-            int underscoreIndex = methodSpan.IndexOf('_');
+        ReadOnlySpan<char> methodSpan = methodInfo.Name.AsSpan();
+        int underscoreIndex = methodSpan.IndexOf('_');
 
-            if (underscoreIndex >= 0 && underscoreIndex < methodSpan.Length - 1)
-            {
-                methodName = methodSpan.Slice(underscoreIndex + 1).ToString();
-            }
-        }
-
-        return methodName;
+        // If the underscore is valid, slice the span without allocating a new string
+        return underscoreIndex >= 0 && underscoreIndex < methodSpan.Length - 1
+            ? new string(methodSpan.Slice(underscoreIndex + 1))
+            : methodInfo.Name;
     }
 }
