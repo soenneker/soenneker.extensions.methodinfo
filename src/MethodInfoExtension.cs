@@ -22,8 +22,8 @@ public static class MethodInfoExtension
     /// </returns>
     public static string GetSignature(this System.Reflection.MethodInfo? methodInfo)
     {
-        if (methodInfo == null)
-            return string.Empty;
+        if (methodInfo is null)
+            return "";
 
         // Use StringBuilder with an estimated capacity to minimize resizing
         var sb = new StringBuilder(128);
