@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.Contracts;
 using System.Reflection;
 using System.Text;
 
@@ -20,6 +21,7 @@ public static class MethodInfoExtension
     /// A string that represents the signature of the specified method. If <paramref name="methodInfo"/> is <c>null</c>,
     /// an empty string is returned.
     /// </returns>
+    [Pure]
     public static string GetSignature(this System.Reflection.MethodInfo? methodInfo)
     {
         if (methodInfo is null)
@@ -41,7 +43,7 @@ public static class MethodInfoExtension
         if (methodInfo.IsStatic)
             sb.Append("static ");
 
-        if (methodInfo.IsVirtual && !methodInfo.IsAbstract)
+        if (methodInfo is { IsVirtual: true, IsAbstract: false })
             sb.Append("virtual ");
 
         // Append return type and method name
@@ -73,6 +75,7 @@ public static class MethodInfoExtension
     /// <returns>
     /// A <see cref="string"/> containing the original member name, with any accessor prefixes removed.
     /// </returns>
+    [Pure]
     public static string ToOriginalMemberName(this System.Reflection.MethodInfo methodInfo)
     {
         if (!methodInfo.IsSpecialName)
@@ -82,8 +85,6 @@ public static class MethodInfoExtension
         int underscoreIndex = methodSpan.IndexOf('_');
 
         // If the underscore is valid, slice the span without allocating a new string
-        return underscoreIndex >= 0 && underscoreIndex < methodSpan.Length - 1
-            ? new string(methodSpan.Slice(underscoreIndex + 1))
-            : methodInfo.Name;
+        return underscoreIndex >= 0 && underscoreIndex < methodSpan.Length - 1 ? new string(methodSpan.Slice(underscoreIndex + 1)) : methodInfo.Name;
     }
 }
