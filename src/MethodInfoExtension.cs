@@ -2,148 +2,159 @@
 using System.Diagnostics.Contracts;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Text;
 
 namespace Soenneker.Extensions.MethodInfo;
 
-/// <summary>
-/// A collection of useful MethodInfo methods
-/// </summary>
 public static class MethodInfoExtension
 {
     private static readonly ConditionalWeakTable<System.Reflection.MethodInfo, string> _signatureCache = new();
 
     /// <summary>
-    /// Generates a C#-style signature string for the specified method.
+    /// Returns a string representation of the method signature for the specified method information.
     /// </summary>
-    /// <remarks>
-    /// The generated signature includes:
-    /// <list type="bullet">
-    /// <item><description>Access modifier (<c>public</c> or <c>private</c>)</description></item>
-    /// <item><description>Method modifiers (<c>abstract</c>, <c>static</c>, <c>virtual</c>)</description></item>
-    /// <item><description>Return type name</description></item>
-    /// <item><description>Method name</description></item>
-    /// <item><description>Parameter list with type names and parameter names</description></item>
-    /// </list>
-    /// <para>
-    /// This method uses an internal cache to avoid repeated reflection and string allocations
-    /// when called multiple times for the same <see cref="System.Reflection.MethodInfo"/> instance.
-    /// </para>
-    /// </remarks>
-    /// <param name="methodInfo">
-    /// The <see cref="System.Reflection.MethodInfo"/> instance to generate a signature for.
-    /// </param>
-    /// <returns>
-    /// A string containing the formatted method signature.
-    /// If <paramref name="methodInfo"/> is <c>null</c>, an empty string is returned.
-    /// </returns>
+    /// <remarks>The returned signature includes the method's name, parameters, and return type. The result is
+    /// cached for performance when called repeatedly with the same method information.</remarks>
+    /// <param name="methodInfo">The method information to generate the signature for. Can be null.</param>
+    /// <returns>A string containing the method signature. Returns an empty string if <paramref name="methodInfo"/> is null.</returns>
     [Pure]
     public static string GetSignature(this System.Reflection.MethodInfo? methodInfo)
     {
         if (methodInfo is null)
             return string.Empty;
 
-        if (_signatureCache.TryGetValue(methodInfo, out string? cached))
-            return cached;
-
-        string sig = BuildSignature(methodInfo);
-        _signatureCache.Add(methodInfo, sig);
-        return sig;
+        return _signatureCache.GetValue(methodInfo, static mi => BuildSignature(mi));
     }
 
-    /// <summary>
-    /// Builds the method signature string without consulting or updating the cache.
-    /// </summary>
-    /// <remarks>
-    /// This method performs reflection to retrieve parameter metadata and constructs
-    /// the signature using a pre-sized <see cref="StringBuilder"/> to minimize allocations.
-    /// <para>
-    /// Callers should prefer <see cref="GetSignature(System.Reflection.MethodInfo?)"/> instead,
-    /// which provides caching and avoids repeated work.
-    /// </para>
-    /// </remarks>
-    /// <param name="methodInfo">
-    /// The <see cref="System.Reflection.MethodInfo"/> to build the signature for.
-    /// </param>
-    /// <returns>
-    /// A string containing the formatted method signature.
-    /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static string BuildSignature(System.Reflection.MethodInfo methodInfo)
     {
-        // GetParameters() allocates the array; unavoidable without deeper caching.
         ParameterInfo[] parameters = methodInfo.GetParameters();
 
-        // Slightly better starting capacity than a fixed 128 for small methods.
-        // Rough estimate: base + per-param (type + space + name + ", ")
-        int capacity = 48 + parameters.Length * 24;
-        var sb = new StringBuilder(capacity);
+        string access = GetAccessModifier(methodInfo); // may be ""
+        string modifiers = GetModifiers(methodInfo); // may be ""
 
-        if (methodInfo.IsPrivate)
-            sb.Append("private ");
-        else if (methodInfo.IsPublic)
-            sb.Append("public ");
+        string returnType = methodInfo.ReturnType.Name;
+        string methodName = methodInfo.Name;
 
-        if (methodInfo.IsAbstract)
-            sb.Append("abstract ");
+        // Pass 1: compute length
+        int len = access.Length + modifiers.Length + returnType.Length + 1 + // space
+                  methodName.Length + 1; // '('
 
-        if (methodInfo.IsStatic)
-            sb.Append("static ");
-
-        if (methodInfo.IsVirtual && !methodInfo.IsAbstract)
-            sb.Append("virtual ");
-
-        sb.Append(methodInfo.ReturnType.Name);
-        sb.Append(' ');
-        sb.Append(methodInfo.Name);
-        sb.Append('(');
-
-        for (int i = 0; i < parameters.Length; i++)
+        for (var i = 0; i < parameters.Length; i++)
         {
             if (i != 0)
-                sb.Append(", ");
+                len += 2; // ", "
 
             ParameterInfo p = parameters[i];
 
-            sb.Append(p.ParameterType.Name);
-            sb.Append(' ');
-            sb.Append(p.Name);
+            string pt = p.ParameterType.Name;
+            string? pn = p.Name;
+
+            len += pt.Length + 1; // type + space
+            len += pn?.Length ?? 0; // name (can be null in rare cases)
         }
 
-        sb.Append(')');
-        return sb.ToString();
+        len += 1; // ')'
+
+        // Pass 2: create + fill
+        return string.Create(len, new SignatureState(access, modifiers, returnType, methodName, parameters), static (span, state) =>
+        {
+            var pos = 0;
+
+            pos = Write(span, pos, state.Access);
+            pos = Write(span, pos, state.Modifiers);
+            pos = Write(span, pos, state.ReturnType);
+            span[pos++] = ' ';
+            pos = Write(span, pos, state.MethodName);
+            span[pos++] = '(';
+
+            ParameterInfo[] ps = state.Parameters;
+
+            for (var i = 0; i < ps.Length; i++)
+            {
+                if (i != 0)
+                {
+                    span[pos++] = ',';
+                    span[pos++] = ' ';
+                }
+
+                ParameterInfo p = ps[i];
+
+                string pt = p.ParameterType.Name;
+                pos = Write(span, pos, pt);
+
+                span[pos++] = ' ';
+
+                string? pn = p.Name;
+
+                if (!string.IsNullOrEmpty(pn))
+                    pos = Write(span, pos, pn);
+            }
+
+            span[pos++] = ')';
+        });
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int Write(Span<char> dest, int pos, string value)
+    {
+        value.AsSpan()
+             .CopyTo(dest.Slice(pos));
+        return pos + value.Length;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static string GetAccessModifier(System.Reflection.MethodInfo m)
+    {
+        if (m.IsPublic)
+            return "public ";
+        if (m.IsPrivate)
+            return "private ";
+        if (m.IsFamily)
+            return "protected ";
+        if (m.IsAssembly)
+            return "internal ";
+        if (m.IsFamilyOrAssembly)
+            return "protected internal ";
+        if (m.IsFamilyAndAssembly)
+            return "private protected ";
+        return string.Empty;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static string GetModifiers(System.Reflection.MethodInfo m)
+    {
+        if (m.IsAbstract)
+        {
+            if (m.IsStatic)
+                return "abstract static "; // extremely rare combo, but handle
+            return "abstract ";
+        }
+
+        if (m.IsStatic)
+            return "static ";
+
+        if (m.IsVirtual && !m.IsFinal) // avoid printing "virtual" for sealed overrides
+            return "virtual ";
+
+        return string.Empty;
     }
 
     /// <summary>
-    /// Returns the original member name represented by the specified method.
+    /// Returns the original member name associated with the specified method, removing special prefixes used for
+    /// property and event accessors.
     /// </summary>
-    /// <remarks>
-    /// This method is primarily intended for property and event accessor methods
-    /// whose names are compiler-generated and prefixed with values such as:
-    /// <list type="bullet">
-    /// <item><description><c>get_</c></description></item>
-    /// <item><description><c>set_</c></description></item>
-    /// <item><description><c>add_</c></description></item>
-    /// <item><description><c>remove_</c></description></item>
-    /// </list>
-    /// <para>
-    /// For example, a method named <c>get_Value</c> will return <c>Value</c>.
-    /// </para>
-    /// <para>
-    /// If the method is not a special name, the original method name is returned unchanged.
-    /// </para>
-    /// </remarks>
-    /// <param name="methodInfo">
-    /// The <see cref="System.Reflection.MethodInfo"/> instance to extract the original member name from.
-    /// </param>
-    /// <returns>
-    /// The original member name with any accessor prefixes removed,
-    /// or the method name unchanged if no prefix is present.
-    /// </returns>
+    /// <remarks>This method strips common prefixes such as "get_", "set_", "add_", and "remove_" from special
+    /// method names generated for property and event accessors. If the method is not a special name, the original
+    /// method name is returned unchanged.</remarks>
+    /// <param name="methodInfo">The method information from which to extract the original member name. Can be null.</param>
+    /// <returns>A string containing the original member name. Returns an empty string if <paramref name="methodInfo"/> is null.</returns>
     [Pure]
-    public static string ToOriginalMemberName(this System.Reflection.MethodInfo methodInfo)
+    public static string ToOriginalMemberName(this System.Reflection.MethodInfo? methodInfo)
     {
-        // Fast path: not a special name => no allocation
+        if (methodInfo is null)
+            return string.Empty;
+
         string name = methodInfo.Name;
 
         if (!methodInfo.IsSpecialName)
@@ -151,7 +162,6 @@ public static class MethodInfoExtension
 
         ReadOnlySpan<char> span = name.AsSpan();
 
-        // Common special-name fast paths (property + event accessors)
         if (span.StartsWith("get_".AsSpan(), StringComparison.Ordinal) || span.StartsWith("set_".AsSpan(), StringComparison.Ordinal) ||
             span.StartsWith("add_".AsSpan(), StringComparison.Ordinal))
         {
@@ -164,6 +174,8 @@ public static class MethodInfoExtension
         }
 
         int underscoreIndex = span.IndexOf('_');
-        return underscoreIndex >= 0 && underscoreIndex < span.Length - 1 ? new string(span[(underscoreIndex + 1)..]) : name;
+        return (uint)underscoreIndex < (uint)(span.Length - 1) ? new string(span[(underscoreIndex + 1)..]) : name;
     }
+
+    private readonly record struct SignatureState(string Access, string Modifiers, string ReturnType, string MethodName, ParameterInfo[] Parameters);
 }
