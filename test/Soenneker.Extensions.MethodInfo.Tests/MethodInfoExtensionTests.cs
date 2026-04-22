@@ -1,10 +1,9 @@
-﻿using Xunit;
 
 namespace Soenneker.Extensions.MethodInfo.Tests;
 
 public class MethodInfoExtensionTests
 {
-    [Fact]
+    [Test]
     public void Test()
     { 
         
