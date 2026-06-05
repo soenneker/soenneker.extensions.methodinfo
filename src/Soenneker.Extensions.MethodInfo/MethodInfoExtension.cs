@@ -5,6 +5,9 @@ using System.Runtime.CompilerServices;
 
 namespace Soenneker.Extensions.MethodInfo;
 
+/// <summary>
+/// Represents the method info extension.
+/// </summary>
 public static class MethodInfoExtension
 {
     private static readonly ConditionalWeakTable<System.Reflection.MethodInfo, string> _signatureCache = new();
